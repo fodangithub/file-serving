@@ -50,11 +50,23 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
 }
 
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    context.Response.Headers["X-XSS-Protection"] = "0";
+    await next();
+});
+
 app.UseAntiforgery();
 app.MapStaticAssets();
 
 app.MapGet("/api/download", (HttpContext context, FileService fileService, string path) =>
 {
+    if (path.Length > FileService.MaxRelativePathLength)
+        return Results.BadRequest("Path exceeds maximum allowed length.");
+
     var result = fileService.GetFileForDownload(path);
     if (result == null)
         return Results.NotFound();

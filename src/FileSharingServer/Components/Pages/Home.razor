@@ -29,7 +29,8 @@
         <div class="search-bar">
             <input type="text"
                    class="search-input"
-                   placeholder="Search files (partial text or * and ? wildcards, min 3 chars)..."
+                   placeholder="Search files (partial text or * and ? wildcards, min 3 chars, max 200)..."
+                   maxlength="200"
                    value="@_searchInput"
                    @oninput="OnSearchInput"
                    @onkeydown="OnSearchKey" />
@@ -52,6 +53,7 @@
         @if (_searchResults != null)
         {
             <div class="search-results">
+                <div class="search-progress @(IsSearchComplete ? "complete" : "active")"></div>
                 @if (_isSearching)
                 {
                     <div class="search-summary search-status">
@@ -65,12 +67,27 @@
                         Found @_searchResults.Count result(s) for "<strong>@_searchQuery</strong>"
                     </div>
                 }
+
+                @if (_isSearching && _searchResults.Count == 0)
+                {
+                    <div class="skeleton-list">
+                        @for (int i = 0; i < 6; i++)
+                        {
+                            <div class="skeleton-row">
+                                <span class="skeleton skeleton-icon"></span>
+                                <span class="skeleton skeleton-name"></span>
+                                <span class="skeleton skeleton-size"></span>
+                            </div>
+                        }
+                    </div>
+                }
+
                 @if (_searchResults.Count > 0)
                 {
                     <div class="section">
                         @foreach (var result in _searchResults)
                         {
-                            <div class="file-entry">
+                            <div class="file-entry result-enter" @key="result.RelativePath">
                                 <span class="icon">&#x1F4C4;</span>
                                 <span class="name" title="@result.RelativePath">@result.RelativePath</span>
                                 <span class="size">@FormatSize(result.Size)</span>
@@ -108,6 +125,8 @@
     private List<SearchResult>? _searchResults;
     private bool _isSearching;
     private CancellationTokenSource? _searchCts;
+
+    private bool IsSearchComplete => !_isSearching;
 
     protected override void OnInitialized()
     {
@@ -158,6 +177,14 @@
             return;
         }
 
+        if (_searchInput.Length > FileService.MaxSearchPatternLength)
+        {
+            _searchError = $"Search pattern must be at most {FileService.MaxSearchPatternLength} characters.";
+            _searchResults = null;
+            _searchQuery = null;
+            return;
+        }
+
         if (!FileService.ValidateSearchPattern(_searchInput))
         {
             _searchError = "Pattern must be at least 3 characters and contain at least one non-wildcard character (not * ? .).";
@@ -166,7 +193,6 @@
             return;
         }
 
-        // Cancel any previous search and create a fresh token for this one.
         CancelOngoingSearch();
         var cts = new CancellationTokenSource();
         _searchCts = cts;
@@ -177,24 +203,33 @@
         _searchResults = new List<SearchResult>();
         StateHasChanged();
 
+        var pending = new List<SearchResult>();
+
         try
         {
             await foreach (var result in FileService.SearchFilesAsync(_currentPath, _searchInput, token))
             {
-                // If a newer search has started while we were awaiting, bail out silently.
                 if (cts != _searchCts) return;
 
-                _searchResults.Add(result);
+                pending.Add(result);
+                if (pending.Count >= 5)
+                {
+                    _searchResults.AddRange(pending);
+                    pending.Clear();
+                    StateHasChanged();
+                    await Task.Delay(50, token);
+                }
+            }
+
+            if (pending.Count > 0 && cts == _searchCts)
+            {
+                _searchResults.AddRange(pending);
                 StateHasChanged();
             }
         }
-        catch (OperationCanceledException)
-        {
-            // Cancelled — the UI will be updated by the new search or by ClearSearch.
-        }
+        catch (OperationCanceledException) { }
         finally
         {
-            // Only flip the flag if this is still the active search.
             if (cts == _searchCts)
             {
                 _isSearching = false;

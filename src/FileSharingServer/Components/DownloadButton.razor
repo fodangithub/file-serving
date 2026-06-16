@@ -8,9 +8,10 @@
 else if (_state == DownloadState.Downloading)
 {
     <div class="download-progress">
-        <div class="download-bar" style="width: @_progress%"></div>
-        <span class="download-percent">@_progress%</span>
+        <div class="download-bar" style="width: @_progress.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+        <span class="download-percent">@_progress.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%</span>
     </div>
+    <span class="download-speed">@_speedText</span>
 }
 else if (_state == DownloadState.Done)
 {
@@ -18,7 +19,15 @@ else if (_state == DownloadState.Done)
 }
 else if (_state == DownloadState.Error)
 {
-    <button class="download-btn download-error" @onclick="StartDownload">Retry</button>
+    <div class="download-actions">
+        <button class="download-btn download-error" @onclick="ResumeDownload">
+            @(_resumable ? "Resume" : "Retry")
+        </button>
+        @if (_resumable)
+        {
+            <button class="download-btn download-restart" @onclick="StartOver">Start Over</button>
+        }
+    </div>
 }
 
 @code {
@@ -26,15 +35,18 @@ else if (_state == DownloadState.Error)
     [Parameter] public string FileName { get; set; } = "";
 
     private DownloadState _state = DownloadState.Idle;
-    private int _progress;
+    private double _progress;
+    private string _speedText = "";
     private bool _disabled;
-    private IJSObjectReference? _jsModule;
+    private bool _resumable;
     private DotNetObjectReference<DownloadButton>? _dotNetRef;
 
     [JSInvokable]
-    public void OnProgress(int percent)
+    public void OnProgress(double percent, long bytesPerSecond)
     {
         _progress = percent;
+        if (bytesPerSecond > 0)
+            _speedText = FormatSpeed(bytesPerSecond);
         StateHasChanged();
     }
 
@@ -42,6 +54,8 @@ else if (_state == DownloadState.Error)
     public void OnComplete()
     {
         _state = DownloadState.Done;
+        _progress = 100;
+        _speedText = "";
         StateHasChanged();
         _ = ResetAfterDelay();
     }
@@ -50,26 +64,64 @@ else if (_state == DownloadState.Error)
     public void OnError(string message)
     {
         _state = DownloadState.Error;
+        _speedText = "";
         _disabled = false;
+        _ = CheckResumable();
+    }
+
+    private async Task CheckResumable()
+    {
+        try
+        {
+            _resumable = await JS.InvokeAsync<bool>("hasPartialDownload", Url, FileName);
+        }
+        catch
+        {
+            _resumable = false;
+        }
         StateHasChanged();
     }
 
     private async Task StartDownload()
     {
+        await ExecuteDownload(resume: false);
+    }
+
+    private async Task ResumeDownload()
+    {
+        await ExecuteDownload(resume: true);
+    }
+
+    private async Task StartOver()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("abortDownload", Url, FileName);
+        }
+        catch { }
+        _resumable = false;
+        await ExecuteDownload(resume: false);
+    }
+
+    private async Task ExecuteDownload(bool resume)
+    {
         _state = DownloadState.Downloading;
         _progress = 0;
+        _speedText = "";
         _disabled = true;
         StateHasChanged();
 
         try
         {
             _dotNetRef ??= DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("downloadFile", Url, FileName, _dotNetRef);
+            await JS.InvokeVoidAsync("downloadFile", Url, FileName, _dotNetRef, resume);
         }
         catch
         {
             _state = DownloadState.Error;
+            _speedText = "";
             _disabled = false;
+            await CheckResumable();
         }
     }
 
@@ -77,12 +129,29 @@ else if (_state == DownloadState.Error)
     {
         await Task.Delay(2000);
         _state = DownloadState.Idle;
+        _progress = 0;
+        _speedText = "";
         _disabled = false;
+        _resumable = false;
         StateHasChanged();
+    }
+
+    private static string FormatSpeed(long bytesPerSecond)
+    {
+        string[] units = { "B/s", "KB/s", "MB/s", "GB/s" };
+        double speed = bytesPerSecond;
+        int unit = 0;
+        while (speed >= 1024 && unit < units.Length - 1) { speed /= 1024; unit++; }
+        return $"{speed:0.#} {units[unit]}";
     }
 
     public async ValueTask DisposeAsync()
     {
+        try
+        {
+            await JS.InvokeVoidAsync("abortDownload", Url, FileName);
+        }
+        catch { }
         _dotNetRef?.Dispose();
     }
 

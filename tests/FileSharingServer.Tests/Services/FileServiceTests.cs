@@ -467,4 +467,129 @@ public class FileServiceTests : IDisposable
 
         Assert.Empty(results);
     }
+
+    // ── Security tests ────────────────────────────────────────────────────
+
+    [Fact]
+    public void PathTraversal_TooLongPath_Blocked()
+    {
+        var longPath = new string('a', FileService.MaxRelativePathLength + 1);
+        var result = _service.ResolveAndValidate(longPath);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void PathTraversal_NullByte_Blocked()
+    {
+        var result = _service.ResolveAndValidate("test\0.txt");
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void PathTraversal_ControlChars_Blocked()
+    {
+        var result = _service.ResolveAndValidate("test\x01.txt");
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void PathTraversal_NullInput_Blocked()
+    {
+        var result = _service.ResolveAndValidate(null!);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void GetFileForDownload_HiddenFile_Blocked()
+    {
+        CreateFile(".env", "secret=value");
+
+        var result = _service.GetFileForDownload(".env");
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void GetFileForDownload_FileInHiddenDir_Blocked()
+    {
+        CreateFile(".hidden/secret.txt", "secret");
+
+        var result = _service.GetFileForDownload(".hidden/secret.txt");
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void GetFileForDownload_NormalFile_Allowed()
+    {
+        CreateFile("docs/readme.txt", "hello");
+
+        var result = _service.GetFileForDownload("docs/readme.txt");
+        Assert.NotNull(result);
+        Assert.Equal("readme.txt", result!.Value.fileName);
+    }
+
+    [Fact]
+    public void PathTraversal_PrefixBoundary_DifferentDir()
+    {
+        // Create a directory whose name starts with the test root's last segment
+        // but is actually a different directory. The prefix-boundary check must
+        // reject paths that resolve into it.
+        var parentDir = Path.GetDirectoryName(_testRoot)!;
+        var rootName = Path.GetFileName(_testRoot);
+        var similarDir = Path.Combine(parentDir, rootName + "_evil");
+        Directory.CreateDirectory(similarDir);
+        try
+        {
+            // Build a path that textually starts with _testRoot but actually
+            // points to the sibling directory — this can't happen through
+            // Path.Combine+GetFullPath with "..", so test IsUnderRoot directly.
+            var evilPath = similarDir + Path.DirectorySeparatorChar + "file.txt";
+            // IsUnderRoot is private; test via GetRelativePath which calls it.
+            var relative = _service.GetRelativePath(evilPath);
+            Assert.Null(relative);
+        }
+        finally
+        {
+            Directory.Delete(similarDir, true);
+        }
+    }
+
+    [Fact]
+    public void ValidateSearchPattern_TooLong_ReturnsFalse()
+    {
+        var longPattern = "aaa" + new string('b', FileService.MaxSearchPatternLength);
+        Assert.False(FileService.ValidateSearchPattern(longPattern));
+    }
+
+    [Fact]
+    public void ValidateSearchPattern_ControlChars_ReturnsFalse()
+    {
+        Assert.False(FileService.ValidateSearchPattern("test\x01"));
+        Assert.False(FileService.ValidateSearchPattern("\x00abc"));
+    }
+
+    [Fact]
+    public void SearchFiles_DoesNotReturnHiddenFilesInSubdirectories()
+    {
+        CreateFile("visible/normal.txt");
+        CreateFile("visible/.secret.txt");
+
+        var results = _service.SearchFiles("", "*.txt");
+
+        Assert.Single(results);
+        Assert.Equal("normal.txt", results[0].FileName);
+    }
+
+    [Fact]
+    public async Task SearchFilesAsync_DoesNotReturnHiddenFilesInSubdirectories()
+    {
+        CreateFile("visible/normal.txt");
+        CreateFile("visible/.secret.txt");
+
+        var results = new List<SearchResult>();
+        await foreach (var r in _service.SearchFilesAsync("", "*.txt"))
+            results.Add(r);
+
+        Assert.Single(results);
+        Assert.Equal("normal.txt", results[0].FileName);
+    }
 }
