@@ -1,11 +1,12 @@
 @page "/"
 @using FileSharingServer.Services
 @inject FileService FileService
+@inject IJSRuntime JS
 @rendermode InteractiveServer
 
 <PageTitle>File Server</PageTitle>
 
-<div class="file-browser">
+<div class="file-browser @PanelClass">
     <div class="left-panel">
         <h3>Directories</h3>
         <div class="tree-root" @onclick="@(() => OnDirectorySelected(""))">
@@ -16,7 +17,13 @@
                        CurrentPath="@_currentPath"
                        OnDirectorySelected="@OnDirectorySelected" />
     </div>
+    <div class="panel-backdrop" @onclick="ClosePanel"></div>
     <div class="right-panel">
+        <div class="panel-toolbar">
+            <button class="panel-toggle" @onclick="TogglePanel" title="Toggle directory tree">
+                <span class="panel-toggle-icon">&#x2630;</span>
+            </button>
+        </div>
         <div class="breadcrumb">
             <span @onclick="@(() => OnDirectorySelected(""))" class="crumb">Root</span>
             @foreach (var segment in GetBreadcrumbs())
@@ -126,7 +133,45 @@
     private bool _isSearching;
     private CancellationTokenSource? _searchCts;
 
+    private bool _toggled;
+    private bool _panelOpen;
+
     private bool IsSearchComplete => !_isSearching;
+
+    private string PanelClass
+    {
+        get
+        {
+            if (!_toggled) return "";
+            return _panelOpen ? "panel-open" : "panel-closed";
+        }
+    }
+
+    private void TogglePanel()
+    {
+        if (!_toggled)
+        {
+            _panelOpen = true;
+            _toggled = true;
+        }
+        else
+        {
+            _panelOpen = !_panelOpen;
+        }
+    }
+
+    private void ClosePanel()
+    {
+        if (_toggled && _panelOpen)
+        {
+            _panelOpen = false;
+        }
+        else if (!_toggled)
+        {
+            _panelOpen = false;
+            _toggled = true;
+        }
+    }
 
     protected override void OnInitialized()
     {
@@ -143,9 +188,15 @@
         ClearSearch();
     }
 
-    private void OnDirectorySelected(string path)
+    private async void OnDirectorySelected(string path)
     {
         LoadDirectory(path);
+        try
+        {
+            var width = await JS.InvokeAsync<double>("eval", "window.innerWidth");
+            if (width < 768) ClosePanel();
+        }
+        catch { }
     }
 
     /// <summary>

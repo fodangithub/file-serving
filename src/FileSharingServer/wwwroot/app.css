@@ -116,14 +116,15 @@ main {
     display: flex;
     height: calc(100vh - 9rem);
     gap: 1rem;
+    position: relative;
 }
 
 .left-panel {
-    width: 260px;
-    min-width: 180px;
     border-right: 1px solid var(--border-color);
     overflow-y: auto;
     padding-right: 1rem;
+    flex-shrink: 0;
+    z-index: 20;
 }
 
 .left-panel h3 {
@@ -138,6 +139,125 @@ main {
 .right-panel {
     flex: 1;
     overflow-y: auto;
+    min-width: 0;
+}
+
+/* Panel toggle button */
+.panel-toolbar {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.4rem;
+}
+
+.panel-toggle {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 0.25rem 0.45rem;
+    cursor: pointer;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.panel-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.panel-toggle-icon {
+    font-size: 1rem;
+    display: inline-block;
+    transition: transform 0.3s ease;
+}
+
+/* Backdrop (mobile overlay behind panel) */
+.panel-backdrop {
+    display: none;
+}
+
+/* ── Desktop (>= 768px) ───────────────────────────────────────────── */
+
+@media (min-width: 768px) {
+    .left-panel {
+        width: 260px;
+        min-width: 180px;
+        transition: width 0.25s ease, min-width 0.25s ease,
+                    padding 0.25s ease, border-width 0.25s ease, opacity 0.25s ease;
+    }
+
+    /* Default: panel open */
+    .file-browser:not(.panel-open):not(.panel-closed) .left-panel {
+        width: 260px;
+        min-width: 180px;
+    }
+
+    .file-browser.panel-open .left-panel {
+        width: 260px;
+        min-width: 180px;
+    }
+
+    .file-browser.panel-closed .left-panel {
+        width: 0;
+        min-width: 0;
+        overflow: hidden;
+        padding-right: 0;
+        border-right-width: 0;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    /* Rotate toggle icon when panel is open */
+    .file-browser:not(.panel-closed) .panel-toggle-icon {
+        transform: rotate(90deg);
+    }
+}
+
+/* ── Mobile (< 768px) ─────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+    .file-browser {
+        gap: 0;
+    }
+
+    .left-panel {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 280px;
+        max-width: 85vw;
+        padding: 1rem;
+        padding-top: 4rem;
+        background: var(--bg-primary);
+        box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
+        transform: translateX(-100%);
+        visibility: hidden;
+        transition: transform 0.3s ease, visibility 0.3s ease;
+        border-right: 1px solid var(--border-color);
+    }
+
+    .file-browser.panel-open .left-panel {
+        transform: translateX(0);
+        visibility: visible;
+    }
+
+    .file-browser.panel-open .panel-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.3);
+        z-index: 15;
+    }
+
+    /* Rotate toggle icon when panel is open */
+    .file-browser.panel-open .panel-toggle-icon {
+        transform: rotate(90deg);
+    }
 }
 
 /* Directory Tree */
