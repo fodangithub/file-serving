@@ -1,0 +1,16 @@
+Server:
+  Port: 8080
+  RootDirectory: "D:\\"
+
+Auth:
+  Users:
+    - Username: admin
+      PasswordHash: "aee260e27fa2963d200277fab52b6bd10812b8b628686093f1561415d6c607cf"
+    - Username: shared
+      PasswordHash: "cb61dc1577bd33225e0c0a4b34bd696db64b5e3d91ad5b916ac1a45f229e5784"
+
+Https:
+  Enabled: true
+  Port: 8443
+  Domain: "localhost"
+  CertDirectory: "Certificates-SelfSigned"

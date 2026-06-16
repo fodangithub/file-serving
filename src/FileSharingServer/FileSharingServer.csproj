@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FileSharingServer.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.yaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetEscapades.Configuration.Yaml" Version="3.1.0" />
+  </ItemGroup>
+
+</Project>

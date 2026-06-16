@@ -1,0 +1,61 @@
+@using FileSharingServer.Services
+
+<div class="file-list">
+    @if (SubDirectories.Count > 0)
+    {
+        <div class="section">
+            <h4>Folders</h4>
+            @foreach (var dir in SubDirectories)
+            {
+                var dirPath = (string.IsNullOrEmpty(CurrentPath) ? dir.Name : $"{CurrentPath}/{dir.Name}").Replace('\\', '/');
+                <div class="file-entry dir-entry" @onclick="@(() => OnNavigate.InvokeAsync(dirPath))">
+                    <span class="icon">&#x1F4C1;</span>
+                    <span class="name">@dir.Name</span>
+                </div>
+            }
+        </div>
+    }
+
+    @if (Files.Count > 0)
+    {
+        <div class="section">
+            <h4>Files</h4>
+            @foreach (var file in Files)
+            {
+                var relativePath = (string.IsNullOrEmpty(CurrentPath) ? file.Name : $"{CurrentPath}/{file.Name}").Replace('\\', '/');
+                <div class="file-entry">
+                    <span class="icon">&#x1F4C4;</span>
+                    <span class="name">@file.Name</span>
+                    <span class="size">@FormatSize(file.Length)</span>
+                    <DownloadButton Url="@($"/api/download?path={Uri.EscapeDataString(relativePath)}")"
+                                    FileName="@file.Name" />
+                </div>
+            }
+        </div>
+    }
+
+    @if (SubDirectories.Count == 0 && Files.Count == 0)
+    {
+        <div class="empty">This directory is empty.</div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<System.IO.DirectoryInfo> SubDirectories { get; set; } = new();
+    [Parameter] public List<System.IO.FileInfo> Files { get; set; } = new();
+    [Parameter] public string CurrentPath { get; set; } = "";
+    [Parameter] public EventCallback<string> OnNavigate { get; set; }
+
+    private string FormatSize(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        double size = bytes;
+        int unit = 0;
+        while (size >= 1024 && unit < units.Length - 1)
+        {
+            size /= 1024;
+            unit++;
+        }
+        return $"{size:0.##} {units[unit]}";
+    }
+}

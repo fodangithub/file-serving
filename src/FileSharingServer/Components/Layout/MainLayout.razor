@@ -1,0 +1,27 @@
+@inherits LayoutComponentBase
+
+<div class="page">
+    <header class="header">
+        <div class="header-left">
+            <img src="images/logo-512.png" alt="Logo" class="header-logo" />
+            <span class="header-title">fodan-file-serving</span>
+        </div>
+        <button class="theme-toggle" onclick="toggleTheme()">
+            <span id="theme-label">&#x2600; Light</span>
+        </button>
+    </header>
+
+    <main>
+        @Body
+    </main>
+
+    <footer class="footer">
+        Powered by <a href="https://github.com/fodan/fodan-file-serving" target="_blank">fodan-file-serving</a>
+    </footer>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">&#x2715;</span>
+</div>

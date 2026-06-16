@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FileSharingServer/FileSharingServer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FileSharingServer.Tests/FileSharingServer.Tests.csproj" />
+  </Folder>
+</Solution>

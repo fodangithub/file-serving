@@ -1,0 +1,90 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (_state == DownloadState.Idle)
+{
+    <button class="download-btn" @onclick="StartDownload" disabled="@_disabled">Download</button>
+}
+else if (_state == DownloadState.Downloading)
+{
+    <div class="download-progress">
+        <div class="download-bar" style="width: @_progress%"></div>
+        <span class="download-percent">@_progress%</span>
+    </div>
+}
+else if (_state == DownloadState.Done)
+{
+    <span class="download-done">&#10003;</span>
+}
+else if (_state == DownloadState.Error)
+{
+    <button class="download-btn download-error" @onclick="StartDownload">Retry</button>
+}
+
+@code {
+    [Parameter] public string Url { get; set; } = "";
+    [Parameter] public string FileName { get; set; } = "";
+
+    private DownloadState _state = DownloadState.Idle;
+    private int _progress;
+    private bool _disabled;
+    private IJSObjectReference? _jsModule;
+    private DotNetObjectReference<DownloadButton>? _dotNetRef;
+
+    [JSInvokable]
+    public void OnProgress(int percent)
+    {
+        _progress = percent;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnComplete()
+    {
+        _state = DownloadState.Done;
+        StateHasChanged();
+        _ = ResetAfterDelay();
+    }
+
+    [JSInvokable]
+    public void OnError(string message)
+    {
+        _state = DownloadState.Error;
+        _disabled = false;
+        StateHasChanged();
+    }
+
+    private async Task StartDownload()
+    {
+        _state = DownloadState.Downloading;
+        _progress = 0;
+        _disabled = true;
+        StateHasChanged();
+
+        try
+        {
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("downloadFile", Url, FileName, _dotNetRef);
+        }
+        catch
+        {
+            _state = DownloadState.Error;
+            _disabled = false;
+        }
+    }
+
+    private async Task ResetAfterDelay()
+    {
+        await Task.Delay(2000);
+        _state = DownloadState.Idle;
+        _disabled = false;
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+    }
+
+    private enum DownloadState { Idle, Downloading, Done, Error }
+}

@@ -1,0 +1,37 @@
+@using FileSharingServer.Services
+@inject FileService FileService
+
+<ul class="dir-tree">
+    @foreach (var dir in Directories)
+    {
+        var relativePath = FileService.GetRelativePath(dir.FullName) ?? dir.Name;
+        var normalizedPath = relativePath.Replace('\\', '/');
+        var isActive = CurrentPath == normalizedPath;
+        var isExpanded = !string.IsNullOrEmpty(normalizedPath) && CurrentPath.StartsWith(normalizedPath);
+        <li>
+            <span class="tree-item @(isActive ? "active" : "")"
+                  @onclick="@(() => OnDirectorySelected.InvokeAsync(normalizedPath))">
+                <span class="tree-arrow">@(isExpanded ? "\u25BC" : "\u25B6")</span>
+                @dir.Name
+            </span>
+            @if (isExpanded)
+            {
+                var subDirs = FileService.GetDirectories(normalizedPath);
+                if (subDirs.Count > 0)
+                {
+                    <DirectoryTree Directories="@subDirs"
+                                   BasePath="@normalizedPath"
+                                   CurrentPath="@CurrentPath"
+                                   OnDirectorySelected="@OnDirectorySelected" />
+                }
+            }
+        </li>
+    }
+</ul>
+
+@code {
+    [Parameter] public List<System.IO.DirectoryInfo> Directories { get; set; } = new();
+    [Parameter] public string BasePath { get; set; } = "";
+    [Parameter] public string CurrentPath { get; set; } = "";
+    [Parameter] public EventCallback<string> OnDirectorySelected { get; set; }
+}

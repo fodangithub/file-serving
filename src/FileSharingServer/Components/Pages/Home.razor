@@ -1,0 +1,250 @@
+@page "/"
+@using FileSharingServer.Services
+@inject FileService FileService
+@rendermode InteractiveServer
+
+<PageTitle>File Server</PageTitle>
+
+<div class="file-browser">
+    <div class="left-panel">
+        <h3>Directories</h3>
+        <div class="tree-root" @onclick="@(() => OnDirectorySelected(""))">
+            <span class="tree-item @(string.IsNullOrEmpty(_currentPath) ? "active" : "")">Root</span>
+        </div>
+        <DirectoryTree Directories="@_rootDirs"
+                       BasePath=""
+                       CurrentPath="@_currentPath"
+                       OnDirectorySelected="@OnDirectorySelected" />
+    </div>
+    <div class="right-panel">
+        <div class="breadcrumb">
+            <span @onclick="@(() => OnDirectorySelected(""))" class="crumb">Root</span>
+            @foreach (var segment in GetBreadcrumbs())
+            {
+                <span class="separator">/</span>
+                <span @onclick="@(() => OnDirectorySelected(segment.path))" class="crumb">@segment.name</span>
+            }
+        </div>
+
+        <div class="search-bar">
+            <input type="text"
+                   class="search-input"
+                   placeholder="Search files (partial text or * and ? wildcards, min 3 chars)..."
+                   value="@_searchInput"
+                   @oninput="OnSearchInput"
+                   @onkeydown="OnSearchKey" />
+            <button class="search-btn" @onclick="DoSearch" disabled="@_isSearching">Search</button>
+            @if (_isSearching)
+            {
+                <span class="search-spinner"><span class="spinner"></span></span>
+            }
+            @if (!string.IsNullOrEmpty(_searchInput))
+            {
+                <button class="search-clear" @onclick="ClearSearch">&#x2715;</button>
+            }
+        </div>
+
+        @if (_searchError != null)
+        {
+            <div class="search-error">@_searchError</div>
+        }
+
+        @if (_searchResults != null)
+        {
+            <div class="search-results">
+                @if (_isSearching)
+                {
+                    <div class="search-summary search-status">
+                        <span class="spinner-small"></span>
+                        Searching for "<strong>@_searchQuery</strong>"... @_searchResults.Count result(s) found so far
+                    </div>
+                }
+                else
+                {
+                    <div class="search-summary">
+                        Found @_searchResults.Count result(s) for "<strong>@_searchQuery</strong>"
+                    </div>
+                }
+                @if (_searchResults.Count > 0)
+                {
+                    <div class="section">
+                        @foreach (var result in _searchResults)
+                        {
+                            <div class="file-entry">
+                                <span class="icon">&#x1F4C4;</span>
+                                <span class="name" title="@result.RelativePath">@result.RelativePath</span>
+                                <span class="size">@FormatSize(result.Size)</span>
+                                <DownloadButton Url="@($"/api/download?path={Uri.EscapeDataString(result.RelativePath)}")"
+                                                FileName="@result.FileName" />
+                            </div>
+                        }
+                    </div>
+                }
+                else if (!_isSearching)
+                {
+                    <div class="empty">No files matched your search.</div>
+                }
+            </div>
+        }
+        else
+        {
+            <FileList SubDirectories="@_currentSubDirs"
+                      Files="@_currentFiles"
+                      CurrentPath="@_currentPath"
+                      OnNavigate="@OnDirectorySelected" />
+        }
+    </div>
+</div>
+
+@code {
+    private string _currentPath = "";
+    private List<System.IO.DirectoryInfo> _rootDirs = new();
+    private List<System.IO.DirectoryInfo> _currentSubDirs = new();
+    private List<System.IO.FileInfo> _currentFiles = new();
+
+    private string _searchInput = "";
+    private string? _searchQuery;
+    private string? _searchError;
+    private List<SearchResult>? _searchResults;
+    private bool _isSearching;
+    private CancellationTokenSource? _searchCts;
+
+    protected override void OnInitialized()
+    {
+        LoadDirectory("");
+    }
+
+    private void LoadDirectory(string path)
+    {
+        CancelOngoingSearch();
+        _currentPath = path;
+        _rootDirs = FileService.GetDirectories("");
+        _currentSubDirs = FileService.GetDirectories(path);
+        _currentFiles = FileService.GetFiles(path);
+        ClearSearch();
+    }
+
+    private void OnDirectorySelected(string path)
+    {
+        LoadDirectory(path);
+    }
+
+    /// <summary>
+    /// Called on every keystroke in the search input.
+    /// Updates the bound value and cancels any in-flight search so stale results
+    /// never keep arriving after the user has changed the query.
+    /// </summary>
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _searchInput = e.Value?.ToString() ?? "";
+        CancelOngoingSearch();
+    }
+
+    private async void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await DoSearch();
+        }
+    }
+
+    private async Task DoSearch()
+    {
+        _searchError = null;
+
+        if (string.IsNullOrWhiteSpace(_searchInput))
+        {
+            ClearSearch();
+            return;
+        }
+
+        if (!FileService.ValidateSearchPattern(_searchInput))
+        {
+            _searchError = "Pattern must be at least 3 characters and contain at least one non-wildcard character (not * ? .).";
+            _searchResults = null;
+            _searchQuery = null;
+            return;
+        }
+
+        // Cancel any previous search and create a fresh token for this one.
+        CancelOngoingSearch();
+        var cts = new CancellationTokenSource();
+        _searchCts = cts;
+        var token = cts.Token;
+
+        _isSearching = true;
+        _searchQuery = _searchInput;
+        _searchResults = new List<SearchResult>();
+        StateHasChanged();
+
+        try
+        {
+            await foreach (var result in FileService.SearchFilesAsync(_currentPath, _searchInput, token))
+            {
+                // If a newer search has started while we were awaiting, bail out silently.
+                if (cts != _searchCts) return;
+
+                _searchResults.Add(result);
+                StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancelled — the UI will be updated by the new search or by ClearSearch.
+        }
+        finally
+        {
+            // Only flip the flag if this is still the active search.
+            if (cts == _searchCts)
+            {
+                _isSearching = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void CancelOngoingSearch()
+    {
+        if (_searchCts != null)
+        {
+            _searchCts.Cancel();
+            _searchCts.Dispose();
+            _searchCts = null;
+        }
+    }
+
+    private void ClearSearch()
+    {
+        CancelOngoingSearch();
+        _searchInput = "";
+        _searchQuery = null;
+        _searchError = null;
+        _searchResults = null;
+        _isSearching = false;
+    }
+
+    private List<(string name, string path)> GetBreadcrumbs()
+    {
+        if (string.IsNullOrEmpty(_currentPath))
+            return new();
+
+        var parts = _currentPath.Split('/', '\\');
+        var result = new List<(string name, string path)>();
+        var current = "";
+        foreach (var part in parts)
+        {
+            current = string.IsNullOrEmpty(current) ? part : $"{current}/{part}";
+            result.Add((part, current));
+        }
+        return result;
+    }
+
+    private string FormatSize(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        double size = bytes;
+        int unit = 0;
+        while (size >= 1024 && unit < units.Length - 1) { size /= 1024; unit++; }
+        return $"{size:0.##} {units[unit]}";
+    }
+}
