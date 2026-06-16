@@ -27,3 +27,6 @@ Certificates-SelfSigned/
 ## Build artifacts
 *.nupkg
 *.snupkg
+
+## USN search index cache
+usn-cache.data

@@ -1,0 +1,17 @@
+# IP Ban List
+# ==========
+# IPs listed here are permanently banned from accessing the server.
+# The server automatically adds IPs that exceed 20 failed login attempts within 5 minutes.
+# Changes to this file are detected and reloaded automatically — no restart needed.
+#
+# To manually ban an IP, add it under BannedIps:
+#
+# BannedIps:
+#   - Ip: 192.168.1.100
+#     Reason: "Manual ban"
+#     BannedAt: "2026-06-16T12:00:00Z"
+#   - Ip: 10.0.0.5
+#     Reason: "Brute force"
+#     BannedAt: "2026-06-16T13:30:00Z"
+
+BannedIps: []

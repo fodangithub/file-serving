@@ -13,7 +13,8 @@ A lightweight file browsing and download server built with **C# / ASP.NET Core B
 - **File Download** — Direct download links with path traversal protection
 - **Hidden File Filtering** — Hides both Windows `Hidden` attribute files and dot-prefixed (`.git`, `.env`) entries
 - **HTTPS with Self-Signed Certificates** — Auto-generates CA + server certificates on first run
-- **Light/Dark Theme** — Toggle in the top-right corner, remembers preference via localStorage
+- **Light/Dark Theme** — Cyberpunk (neon cyan/magenta) dark theme and Cities: Skylines (municipal blue/green) light theme
+- **USN-Powered Search** — Near-instant file search via NTFS USN Journal indexing (falls back to directory enumeration when unavailable)
 - **Responsive UI** — Works on desktop and mobile browsers
 
 ## Project Structure
@@ -31,7 +32,14 @@ file-sharing-server/
 │   │   └── BasicAuthMiddleware.cs             # HTTP Basic Auth middleware
 │   ├── Services/
 │   │   ├── FileService.cs                     # File/directory operations
+│   │   ├── UsnSearchService.cs                # USN Journal search engine (IHostedService)
 │   │   └── CertificateGenerator.cs            # Self-signed cert generation
+│   ├── Search/                                # NTFS USN search engine (from TDS)
+│   │   ├── Engine/
+│   │   │   ├── UsnSearchEngine.cs             # Search facade
+│   │   │   ├── SearchQuery.cs                 # Query parser + bitmask pre-filter
+│   │   │   └── Utils/                         # Span search, pinyin, NtfsUsnJournal
+│   │   └── ...
 │   ├── Components/
 │   │   ├── App.razor                          # HTML shell
 │   │   ├── Routes.razor                       # Router config
@@ -76,6 +84,11 @@ Https:
   Port: 8443                          # HTTPS port
   Domain: "localhost"                 # Certificate domain
   CertDirectory: "Certificates-SelfSigned"  # Certificate output directory
+
+Search:
+  EnableUsnIndex: true                # Enable USN Journal search (requires admin + NTFS)
+  CachePath: "usn-cache.data"         # Index cache file path
+  UpdateIntervalSeconds: 30           # How often to check for file changes
 ```
 
 ### Generating a Password Hash
@@ -143,6 +156,10 @@ Existing certificates are **never overwritten**. To regenerate, delete the certi
 - ASP.NET Core 10.0 / Blazor Server
 - [NetEscapades.Configuration.Yaml](https://github.com/andrewlock/NetEscapades.Configuration) for YAML config
 - xUnit for unit testing (41 tests)
+
+## Acknowledgments
+
+- **File search** — Powered by [TDS](https://github.com/LdotJdot/TDS/tree/main) — a lightning-fast Windows file finder that uses the NTFS USN Journal for near-instant search. The USN engine code is included inline in `Search/`.
 
 ## License
 

@@ -1,7 +1,9 @@
 using System.Text;
 using FileSharingServer.Auth;
 using FileSharingServer.Configuration;
+using FileSharingServer.Services;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace FileSharingServer.Tests.Auth;
@@ -11,7 +13,8 @@ public class BasicAuthMiddlewareTests
     private BasicAuthMiddleware CreateMiddleware(AppSettings settings, RequestDelegate? next = null)
     {
         next ??= ctx => Task.CompletedTask;
-        return new BasicAuthMiddleware(next, Options.Create(settings));
+        var banlist = new BanlistService(Options.Create(settings), NullLogger<BanlistService>.Instance);
+        return new BasicAuthMiddleware(next, Options.Create(settings), banlist);
     }
 
     private static AppSettings CreateSettings(string username, string password)

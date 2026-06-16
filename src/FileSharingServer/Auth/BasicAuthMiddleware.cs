@@ -1,7 +1,9 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using FileSharingServer.Configuration;
+using FileSharingServer.Services;
 using Microsoft.Extensions.Options;
 
 namespace FileSharingServer.Auth;
@@ -10,11 +12,13 @@ public partial class BasicAuthMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly IOptions<AppSettings> _settings;
+    private readonly BanlistService _banlist;
 
-    public BasicAuthMiddleware(RequestDelegate next, IOptions<AppSettings> settings)
+    public BasicAuthMiddleware(RequestDelegate next, IOptions<AppSettings> settings, BanlistService banlist)
     {
         _next = next;
         _settings = settings;
+        _banlist = banlist;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -27,13 +31,34 @@ public partial class BasicAuthMiddleware
             return;
         }
 
+        // Check if the client IP is banned
+        var clientIp = GetClientIp(context);
+        if (_banlist.IsBanned(clientIp))
+        {
+            context.Response.StatusCode = 403;
+            await context.Response.WriteAsync("Forbidden — your IP has been banned.");
+            return;
+        }
+
         var authHeader = context.Request.Headers.Authorization.ToString();
         if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
         {
             var credentials = DecodeBasicAuth(authHeader);
             if (credentials != null && ValidateCredentials(credentials.Value.username, credentials.Value.password))
             {
+                _banlist.RecordSuccess(clientIp);
                 await _next(context);
+                return;
+            }
+
+            // Credentials provided but invalid — count as failure
+            _banlist.RecordFailure(clientIp);
+
+            // If just got banned from that failure, return 403
+            if (_banlist.IsBanned(clientIp))
+            {
+                context.Response.StatusCode = 403;
+                await context.Response.WriteAsync("Forbidden — your IP has been banned.");
                 return;
             }
         }
@@ -41,6 +66,22 @@ public partial class BasicAuthMiddleware
         context.Response.StatusCode = 401;
         context.Response.Headers["WWW-Authenticate"] = "Basic realm=\"File Server\"";
         await context.Response.WriteAsync("Unauthorized");
+    }
+
+    /// <summary>
+    /// Get the client IP, respecting X-Forwarded-For for reverse proxy setups.
+    /// </summary>
+    private static IPAddress? GetClientIp(HttpContext context)
+    {
+        var forwarded = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(forwarded))
+        {
+            // X-Forwarded-For can contain multiple IPs: client, proxy1, proxy2
+            var firstIp = forwarded.Split(',')[0].Trim();
+            if (IPAddress.TryParse(firstIp, out var ip))
+                return ip;
+        }
+        return context.Connection.RemoteIpAddress;
     }
 
     internal static bool IsExemptPath(string path)

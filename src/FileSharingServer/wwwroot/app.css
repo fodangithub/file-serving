@@ -1,38 +1,41 @@
+/* Light Theme — Cities: Skylines inspired: clean, bright, municipal blue/green */
 :root {
-    --bg-primary: #ffffff;
-    --bg-secondary: #f8f9fa;
-    --bg-hover: #f0f2f5;
-    --bg-active: #e3ecf7;
-    --text-primary: #1a1a2e;
-    --text-secondary: #555770;
-    --text-muted: #8e8ea0;
-    --border-color: #e0e0e6;
-    --accent: #2563eb;
-    --accent-hover: #1d4ed8;
-    --accent-light: #dbeafe;
-    --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --bg-primary: #f4f8fb;
+    --bg-secondary: #e8eff5;
+    --bg-hover: #d8e4ee;
+    --bg-active: #c4d6e4;
+    --text-primary: #1a2a3a;
+    --text-secondary: #4a5c6e;
+    --text-muted: #8a9bab;
+    --border-color: #b8ccd8;
+    --accent: #0288d1;
+    --accent-hover: #0277bd;
+    --accent-light: #e1f5fe;
+    --shadow: 0 1px 3px rgba(20, 60, 100, 0.08);
+    --shadow-lg: 0 4px 12px rgba(20, 60, 100, 0.12);
     --radius: 6px;
     --header-bg: #ffffff;
-    --header-border: #e0e0e6;
+    --header-border: #a8c0d0;
 }
 
+/* Dark Theme — Cyberpunk inspired: neon cyan & magenta on deep dark */
 .dark-theme {
-    --bg-primary: #0f1117;
-    --bg-secondary: #1a1b26;
-    --bg-hover: #24253a;
-    --bg-active: #2a2d45;
-    --text-primary: #c0caf5;
-    --text-secondary: #9aa5ce;
-    --text-muted: #565f89;
-    --border-color: #2a2d3d;
-    --accent: #7aa2f7;
-    --accent-hover: #89b4fa;
-    --accent-light: #1e2040;
-    --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
-    --header-bg: #1a1b26;
-    --header-border: #2a2d3d;
+    --bg-primary: #0a0a14;
+    --bg-secondary: #12121f;
+    --bg-hover: #1a1a32;
+    --bg-active: #22223e;
+    --text-primary: #e0f4ff;
+    --text-secondary: #9ab8d4;
+    --text-muted: #4e6080;
+    --border-color: #2a2a50;
+    --accent: #00f0ff;
+    --accent-hover: #ff2d95;
+    --accent-light: #0c1428;
+    --shadow: 0 1px 4px rgba(0, 240, 255, 0.12);
+    --shadow-lg: 0 4px 16px rgba(0, 240, 255, 0.18);
+    --radius: 6px;
+    --header-bg: #0e0e1c;
+    --header-border: #00f0ff30;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

@@ -15,15 +15,18 @@ public partial class FileService
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(5);
 
     private readonly string _rootDirectory;
+    private readonly UsnSearchService? _usnSearch;
 
-    public FileService(IOptions<AppSettings> settings)
+    public FileService(IOptions<AppSettings> settings, UsnSearchService? usnSearch = null)
     {
         _rootDirectory = Path.GetFullPath(settings.Value.Server.RootDirectory);
+        _usnSearch = usnSearch;
     }
 
-    public FileService(string rootDirectory)
+    public FileService(string rootDirectory, UsnSearchService? usnSearch = null)
     {
         _rootDirectory = Path.GetFullPath(rootDirectory);
+        _usnSearch = usnSearch;
     }
 
     public string RootDirectory => _rootDirectory;
@@ -127,26 +130,54 @@ public partial class FileService
         if (fullPath == null || !Directory.Exists(fullPath))
             return new List<SearchResult>();
 
-        var regex = GlobToRegex(NormalizeSearchPattern(pattern));
+        // Fast path: use USN in-memory index (no disk I/O)
+        if (_usnSearch != null && _usnSearch.IsAvailable)
+        {
+            bool hasWildcards = pattern.Contains('*') || pattern.Contains('?');
+
+            if (!hasWildcards)
+            {
+                // Simple text → keyword substring search
+                var usnResults = _usnSearch.Search(pattern, rootFilter: fullPath, maxResults: MaxSearchResults);
+                if (usnResults != null)
+                    return MapUsnResults(usnResults, fullPath);
+            }
+            else
+            {
+                // Glob/wildcard → regex over the in-memory index (still much faster than disk walk)
+                var regex = GlobToRegex(NormalizeSearchPattern(pattern));
+                try
+                {
+                    var usnResults = _usnSearch.SearchWithRegex(regex, rootFilter: fullPath, maxResults: MaxSearchResults);
+                    if (usnResults != null)
+                        return MapUsnResults(usnResults, fullPath);
+                }
+                catch (RegexMatchTimeoutException) { }
+            }
+        }
+
+        // Fallback: disk-walk with regex (only when USN is unavailable)
+        var fallbackRegex = GlobToRegex(NormalizeSearchPattern(pattern));
         var results = new List<SearchResult>();
 
         try
         {
-            foreach (var file in EnumerateFilesSafe(fullPath, MaxDirectoryDepth))
+            foreach (var (entry, isDir) in EnumerateEntriesSafe(fullPath, MaxDirectoryDepth))
             {
-                if (IsHidden(file) || IsInHiddenDirectory(file, fullPath))
+                if (IsHidden(entry) || IsInHiddenDirectory(entry, fullPath))
                     continue;
 
-                var fileName = Path.GetFileName(file);
-                if (!regex.IsMatch(fileName))
+                var fileName = Path.GetFileName(entry);
+                if (!fallbackRegex.IsMatch(fileName))
                     continue;
 
-                var relPath = Path.GetRelativePath(_rootDirectory, file);
+                var relPath = Path.GetRelativePath(_rootDirectory, entry);
                 results.Add(new SearchResult
                 {
                     FileName = fileName,
                     RelativePath = relPath.Replace('\\', '/'),
-                    Size = new FileInfo(file).Length
+                    Size = isDir ? 0 : new FileInfo(entry).Length,
+                    IsDirectory = isDir,
                 });
 
                 if (results.Count >= MaxSearchResults)
@@ -177,7 +208,42 @@ public partial class FileService
         if (fullPath == null || !Directory.Exists(fullPath))
             yield break;
 
-        var regex = GlobToRegex(NormalizeSearchPattern(pattern));
+        // Fast path: use USN in-memory index (no disk I/O)
+        if (_usnSearch != null && _usnSearch.IsAvailable)
+        {
+            bool hasWildcards = pattern.Contains('*') || pattern.Contains('?');
+
+            List<TDSNET.Engine.UsnSearchResult>? usnResults = null;
+            if (!hasWildcards)
+            {
+                // Simple text → keyword substring search
+                usnResults = _usnSearch.Search(pattern, rootFilter: fullPath, maxResults: MaxSearchResults);
+            }
+            else
+            {
+                // Glob/wildcard → regex over the in-memory index
+                try
+                {
+                    var regex = GlobToRegex(NormalizeSearchPattern(pattern));
+                    usnResults = _usnSearch.SearchWithRegex(regex, rootFilter: fullPath, maxResults: MaxSearchResults);
+                }
+                catch (RegexMatchTimeoutException) { }
+            }
+
+            if (usnResults != null)
+            {
+                var mapped = MapUsnResults(usnResults, fullPath);
+                foreach (var result in mapped)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    yield return result;
+                }
+                yield break;
+            }
+        }
+
+        // Fallback: disk-walk with regex via background thread + channel (only when USN unavailable)
+        var fallbackRegex = GlobToRegex(NormalizeSearchPattern(pattern));
         var channel = Channel.CreateUnbounded<SearchResult>();
 
         _ = Task.Run(async () =>
@@ -185,23 +251,24 @@ public partial class FileService
             try
             {
                 var count = 0;
-                foreach (var file in EnumerateFilesSafe(fullPath, MaxDirectoryDepth))
+                foreach (var (entry, isDir) in EnumerateEntriesSafe(fullPath, MaxDirectoryDepth))
                 {
                     ct.ThrowIfCancellationRequested();
 
-                    if (IsHidden(file) || IsInHiddenDirectory(file, fullPath))
+                    if (IsHidden(entry) || IsInHiddenDirectory(entry, fullPath))
                         continue;
 
-                    var fileName = Path.GetFileName(file);
-                    if (!regex.IsMatch(fileName))
+                    var fileName = Path.GetFileName(entry);
+                    if (!fallbackRegex.IsMatch(fileName))
                         continue;
 
-                    var relPath = Path.GetRelativePath(_rootDirectory, file);
+                    var relPath = Path.GetRelativePath(_rootDirectory, entry);
                     await channel.Writer.WriteAsync(new SearchResult
                     {
                         FileName = fileName,
                         RelativePath = relPath.Replace('\\', '/'),
-                        Size = new FileInfo(file).Length
+                        Size = isDir ? 0 : new FileInfo(entry).Length,
+                        IsDirectory = isDir,
                     }, ct).ConfigureAwait(false);
 
                     if (++count >= MaxSearchResults)
@@ -222,7 +289,40 @@ public partial class FileService
         }
     }
 
-    private static IEnumerable<string> EnumerateFilesSafe(string root, int maxDepth)
+    /// <summary>
+    /// Map USN search results to the SearchResult model used by the UI.
+    /// Applies hidden-directory filtering and computes relative paths and file sizes.
+    /// </summary>
+    private List<SearchResult> MapUsnResults(List<TDSNET.Engine.UsnSearchResult> usnResults, string searchRoot)
+    {
+        var results = new List<SearchResult>();
+        foreach (var r in usnResults)
+        {
+            if (IsHidden(r.FullPath) || IsInHiddenDirectory(r.FullPath, searchRoot))
+                continue;
+
+            var relPath = Path.GetRelativePath(_rootDirectory, r.FullPath);
+            long size = 0;
+            if (!r.IsDirectory)
+            {
+                try { size = new FileInfo(r.FullPath).Length; } catch { /* file may have been deleted */ }
+            }
+
+            results.Add(new SearchResult
+            {
+                FileName = r.FileName,
+                RelativePath = relPath.Replace('\\', '/'),
+                Size = size,
+                IsDirectory = r.IsDirectory,
+            });
+
+            if (results.Count >= MaxSearchResults)
+                break;
+        }
+        return results;
+    }
+
+    private static IEnumerable<(string path, bool isDirectory)> EnumerateEntriesSafe(string root, int maxDepth)
     {
         var stack = new Stack<(string path, int depth)>();
         stack.Push((root, 0));
@@ -240,7 +340,7 @@ public partial class FileService
             catch (IOException) { continue; }
 
             foreach (var file in files)
-                yield return file;
+                yield return (file, false);
 
             string[] subDirs;
             try { subDirs = Directory.GetDirectories(dir); }
@@ -248,7 +348,10 @@ public partial class FileService
             catch (IOException) { continue; }
 
             foreach (var sub in subDirs)
+            {
+                yield return (sub, true);
                 stack.Push((sub, depth + 1));
+            }
         }
     }
 
@@ -397,4 +500,5 @@ public class SearchResult
     public string FileName { get; set; } = "";
     public string RelativePath { get; set; } = "";
     public long Size { get; set; }
+    public bool IsDirectory { get; set; }
 }

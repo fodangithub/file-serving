@@ -1,6 +1,7 @@
 Server:
   Port: 8080
   RootDirectory: "D:\\"
+  Title: "File Serving"
 
 Auth:
   Users:
@@ -14,3 +15,13 @@ Https:
   Port: 8443
   Domain: "localhost"
   CertDirectory: "Certificates-SelfSigned"
+
+Search:
+  EnableUsnIndex: true
+  CachePath: "usn-cache.data"
+  UpdateIntervalSeconds: 30
+
+RateLimit:
+  MaxFailedAttempts: 20
+  WindowMinutes: 5
+  BanlistPath: "banlist.yaml"

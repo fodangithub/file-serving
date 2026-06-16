@@ -1,10 +1,11 @@
 @inherits LayoutComponentBase
+@inject Microsoft.Extensions.Options.IOptions<FileSharingServer.Configuration.AppSettings> AppSettings
 
 <div class="page">
     <header class="header">
         <div class="header-left">
             <img src="images/logo-512.png" alt="Logo" class="header-logo" />
-            <span class="header-title">fodan-file-serving</span>
+            <span class="header-title">@AppSettings.Value.Server.Title</span>
         </div>
         <button class="theme-toggle" onclick="toggleTheme()">
             <span id="theme-label">&#x2600; Light</span>
@@ -17,6 +18,8 @@
 
     <footer class="footer">
         Powered by <a href="https://github.com/fodangithub/file-serving" target="_blank">fodan-file-serving</a>
+        &nbsp;·&nbsp;
+        Search powered by <a href="https://github.com/LdotJdot/TDS/tree/main" target="_blank">TDS</a>
     </footer>
 </div>
 

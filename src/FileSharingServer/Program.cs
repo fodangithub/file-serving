@@ -13,8 +13,16 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddScoped<FileService>();
+builder.Services.AddSingleton<BanlistService>();
 
 var tempConfig = builder.Configuration.Get<AppSettings>() ?? new AppSettings();
+
+// USN-based file search engine (falls back to directory enumeration if unavailable)
+if (tempConfig.Search.EnableUsnIndex)
+{
+    builder.Services.AddSingleton<UsnSearchService>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<UsnSearchService>());
+}
 
 if (tempConfig.Https.Enabled)
 {

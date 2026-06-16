@@ -94,13 +94,24 @@
                     <div class="section">
                         @foreach (var result in _searchResults)
                         {
-                            <div class="file-entry result-enter" @key="result.RelativePath">
-                                <span class="icon">&#x1F4C4;</span>
-                                <span class="name" title="@result.RelativePath">@result.RelativePath</span>
-                                <span class="size">@FormatSize(result.Size)</span>
-                                <DownloadButton Url="@($"/api/download?path={Uri.EscapeDataString(result.RelativePath)}")"
-                                                FileName="@result.FileName" />
-                            </div>
+                            @if (result.IsDirectory)
+                            {
+                                <div class="file-entry dir-entry result-enter" @key="result.RelativePath"
+                                     @onclick="@(() => NavigateToDirectory(result.RelativePath))">
+                                    <span class="icon">&#x1F4C1;</span>
+                                    <span class="name" title="@result.RelativePath">@result.RelativePath</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="file-entry result-enter" @key="result.RelativePath">
+                                    <span class="icon">&#x1F4C4;</span>
+                                    <span class="name" title="@result.RelativePath">@result.RelativePath</span>
+                                    <span class="size">@FormatSize(result.Size)</span>
+                                    <DownloadButton Url="@($"/api/download?path={Uri.EscapeDataString(result.RelativePath)}")"
+                                                    FileName="@result.FileName" />
+                                </div>
+                            }
                         }
                     </div>
                 }
@@ -307,6 +318,14 @@
         _searchError = null;
         _searchResults = null;
         _isSearching = false;
+    }
+
+    /// <summary>
+    /// Navigate to a directory found via search. Exits search mode and loads the directory.
+    /// </summary>
+    private void NavigateToDirectory(string relativePath)
+    {
+        OnDirectorySelected(relativePath);
     }
 
     private List<(string name, string path)> GetBreadcrumbs()
